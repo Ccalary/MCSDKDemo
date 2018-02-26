@@ -1,0 +1,426 @@
+//
+//  LHMediaView.m
+//  LiveHomeDemo
+//
+//  Created by 谢炳 on 2017/12/4.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHMediaView.h"
+#import "GolbalDefine.h"
+#import <KSYMediaPlayer/KSYMediaPlayer.h>
+@interface LHMediaView ()
+@property (nonatomic, strong) KSYMoviePlayerController *player;
+@property (nonatomic, strong) UIView *bottomView, *infoView;
+@property (nonatomic, strong) UIButton *startBtn, *closeBtn, *screenBtn;
+@property (nonatomic, strong) UIButton *playBtn; //中心开始按钮
+@property (nonatomic, strong) UILabel *duration;
+@property (nonatomic, strong) UILabel *currentPlaybackTime;
+@property (nonatomic, strong) UISlider *currentTimeSlider;
+@property (nonatomic, assign) BOOL isDrag; //拖动
+@property (nonatomic, strong) UILabel *titleLabel;//标题
+@property (nonatomic, strong) UIButton *seeNumBtn;//观看人数
+//视频地址
+@property (nonatomic, strong) NSString *mediaUrl;
+@property (nonatomic, strong) LHLiveInfoModel *infoModel; //信息model
+@property (nonatomic, strong) LHTemplateModel *tempModel;  //模版model
+@property (nonatomic, strong) UIImageView *topImageView;
+@property (nonatomic, assign) BOOL isVerticalVideo; //是否是竖屏视频
+@property (nonatomic, assign) BOOL isLive;
+@end
+
+@implementation LHMediaView
+
+- (instancetype)initWithFrame:(CGRect)frame model:(LHLiveInfoModel *)model tempModel:(LHTemplateModel *)tempModel isLive:(BOOL)isLive
+{
+    self =  [super initWithFrame:frame];
+    if (self) {
+        self.infoModel = model;
+        self.tempModel = tempModel;
+        self.isPause = YES;
+        self.isLive = isLive;
+        //如果高度大于宽度则为竖屏视频
+        self.isVerticalVideo = ([model.h doubleValue] > [model.w doubleValue]) ? YES : NO;
+        
+        NSString *mediaUrl = model.url;
+        if (mediaUrl.length == 0){
+            mediaUrl = @"";
+        }
+        self.mediaUrl = mediaUrl;
+        //1、加载初始化播放器
+        [self setVideoView];
+        //2、设置底部编辑view
+        [self setBottomView];
+        //全屏按钮
+        [self initScreenBtn];
+        //3、底部信息条
+        [self initInfoView];
+        [self setViewFrameWithIsHorizonal:NO];
+        
+        if (self.isLive) {
+            [self centerPlayBtn];
+        }
+    }
+    return self;
+}
+
+- (void)dealloc{
+
+}
+
+//是否正在播放
+- (BOOL)isPlaying{
+    return self.player.isPlaying;
+}
+//是否横屏
+- (void)setViewFrameWithIsHorizonal:(BOOL )isHorizonal{
+    CGFloat playerWidth = self.frame.size.width;
+    CGFloat playerHeight = self.frame.size.height;
+    if (isHorizonal){
+        if (self.isVerticalVideo){//竖屏视频
+            _bottomView.frame = CGRectMake(0, playerHeight - 40, playerWidth, 30);
+            _screenBtn.frame = CGRectMake(playerWidth - 35, playerHeight - 40, 35, 30);
+            CGFloat realWidth;
+            if (self.tempModel.videoscale == 0){ //16:9
+                realWidth = playerWidth/9.0*16.0;
+            }else{//4:3
+                realWidth = playerWidth/3.0*4.0;
+            }
+            self.player.view.frame = CGRectMake((playerWidth - realWidth)/2.0, 0, realWidth , playerHeight);
+            _closeBtn.frame = CGRectMake(playerWidth - 30, LH_StatusBarHeight, 30, 50);
+         
+        }else {
+             _bottomView.frame = CGRectMake(0, playerWidth - 40, playerHeight, 30);
+             _screenBtn.frame = CGRectMake(playerHeight - 35, playerWidth - 40, 35, 30);
+            CGFloat realWidth;
+            if (self.tempModel.videoscale == 0){ //16:9
+                realWidth = playerWidth/9.0*16.0;
+            }else{//4:3
+                realWidth = playerWidth/3.0*4.0;
+            }
+            self.player.view.frame = CGRectMake((playerHeight - realWidth)/2.0, 0, realWidth , playerWidth);
+            _closeBtn.frame = CGRectMake(playerHeight - 30, LH_StatusBarHeight, 30, 50);
+        }
+       
+        _infoView.hidden = YES;
+       
+    }else {
+        _bottomView.frame = CGRectMake(0, playerHeight - 60, playerWidth, 30);
+        _screenBtn.frame = CGRectMake(playerWidth - 35, playerHeight - 60, 35, 30);
+        _infoView.hidden = NO;
+        self.player.view.frame = CGRectMake(0, 0, playerWidth, playerHeight - 25);
+        _closeBtn.frame = CGRectMake(self.frame.size.width - 30, LH_StatusBarHeight, 30, 50);
+    }
+
+    _playBtn.center = self.player.view.center;
+    _topImageView.frame = self.player.view.frame;
+    _startBtn.frame = CGRectMake(5, 0, 30, 30);
+    _currentPlaybackTime.frame = CGRectMake(35, 5, 55, 20);
+    _duration.frame = CGRectMake(_bottomView.frame.size.width-90, 5, 55, 20);
+    CGFloat sliderX = 30+60+5;
+    CGFloat sliderWidth = _bottomView.frame.size.width-20-55-55-35-25;
+    _currentTimeSlider.frame = CGRectMake(sliderX,0,sliderWidth,30);
+}
+
+#pragma mark _____初始化金山播放器和点播按钮
+-(void)setVideoView
+{
+    self.backgroundColor = [UIColor blackColor];
+    
+    NSURL *url = [NSURL URLWithString:self.mediaUrl];
+    self.player = [[KSYMoviePlayerController alloc] initWithContentURL:url];
+    if ( self.isVerticalVideo){
+         self.player.scalingMode = MPMovieScalingModeAspectFit;
+    }else {
+         self.player.scalingMode = MPMovieScalingModeAspectFill;
+    }
+    self.player.controlStyle = MPMovieControlStyleNone;
+    self.player.view.backgroundColor = [UIColor blackColor];
+    self.player.view.autoresizingMask = UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+    [self addSubview:self.player.view];
+    
+    /**
+     * 封面
+     */
+    _topImageView = [[UIImageView alloc] init];
+    [self addSubview:_topImageView];
+    //将加载好的图片存入model中
+    if (self.infoModel.imageData){
+        _topImageView.image = [UIImage imageWithData:self.infoModel.imageData];
+    }else{
+        // 通过GCD的方式创建一个新的线程来异步加载图片
+        dispatch_queue_t queue =
+        dispatch_queue_create("cacheimage", DISPATCH_QUEUE_CONCURRENT);
+        dispatch_async(queue, ^{
+            NSData *imageData = [NSData dataWithContentsOfURL:[NSURL URLWithString:self.infoModel.image]];
+            // 通知主线程更新UI
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (imageData) {
+                    _topImageView.image = [UIImage imageWithData:imageData];
+                    self.infoModel.imageData = imageData;
+                }
+            });
+        });
+    }
+    
+    /**
+     * 开始按钮
+     */
+    _playBtn = [[UIButton alloc] initWithFrame:CGRectMake(0, 0, 80, 80)];
+    _playBtn.selected = NO;
+    _playBtn.hidden = self.isLive;
+    [_playBtn setBackgroundImage:[LHToolsHelper getImageWithName:@"直播播放"] forState:UIControlStateNormal];
+    [_playBtn addTarget:self action:@selector(centerPlayBtn) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:_playBtn];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(playbackDidFinish)
+                                                 name:MPMoviePlayerPlaybackDidFinishNotification object:nil];
+    
+    /**
+     * 关闭按钮
+     */
+    _closeBtn = [[UIButton alloc] init];
+    [_closeBtn setImage:[LHToolsHelper getImageWithName:@"lh_close_15"] forState:UIControlStateNormal];
+    [_closeBtn addTarget:self action:@selector(closeBtnAction) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:_closeBtn];
+    
+    //单击的手势
+    UITapGestureRecognizer *singleTapGesture = [[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(handleSingleTap)];
+    singleTapGesture.numberOfTapsRequired = 1;
+    [self addGestureRecognizer:singleTapGesture];
+}
+
+- (void)initScreenBtn{
+    //切换横竖屏按钮
+    _screenBtn = [[UIButton alloc] init];
+    [_screenBtn setImage:[LHToolsHelper getImageWithName:@"全屏"] forState:UIControlStateNormal];
+    [_screenBtn addTarget:self action:@selector(switchScreenDirection:) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:_screenBtn];
+}
+
+#pragma mark _____底部视频编辑view  UI部分
+-(void)setBottomView
+{
+    if (self.isLive) return;
+    //底部功能view
+    _bottomView = [[UIView alloc] init];
+    _bottomView.backgroundColor = [UIColor clearColor];
+    _bottomView.hidden = YES;
+    [self addSubview:_bottomView];
+    
+    //开始暂停按钮
+    _startBtn = [[UIButton alloc] init];
+    _startBtn.selected = NO;
+    [_startBtn setImage:[LHToolsHelper getImageWithName:@"播放"] forState:UIControlStateNormal];
+    [_startBtn setImage:[LHToolsHelper getImageWithName:@"暂停"] forState:UIControlStateSelected];
+    [_startBtn addTarget:self action:@selector(bottomStartBtnAction) forControlEvents:UIControlEventTouchUpInside];
+    [_bottomView addSubview:_startBtn];
+    
+    //当前视频播放所在时间
+    _currentPlaybackTime = [[UILabel alloc] init];
+    _currentPlaybackTime.text = @"00:00:00";
+    _currentPlaybackTime.textColor = [UIColor whiteColor];
+    _currentPlaybackTime.font = [UIFont systemFontOfSize:12];
+    [_bottomView addSubview:_currentPlaybackTime];
+    
+    //视频总长
+    _duration = [[UILabel alloc] init];
+    _duration.text = @"00:00:00";
+    _duration.textColor = [UIColor whiteColor];
+    _duration.font = [UIFont systemFontOfSize:12];
+    [_bottomView addSubview:_duration];
+    
+    //视频进度条
+    _currentTimeSlider = [[UISlider alloc] init];//高度设为40就好,高度代表手指触摸的高度.这个一定要注意
+    _currentTimeSlider.continuous = YES;
+    [_currentTimeSlider addTarget:self action:@selector(sliderValueChanged:) forControlEvents:UIControlEventValueChanged];
+    [_currentTimeSlider addTarget:self action:@selector(sliderDragExit:) forControlEvents:UIControlEventTouchDown];
+    // 通常状态下
+    [_currentTimeSlider setThumbImage:[LHToolsHelper getImageWithName:@"椭圆-7"] forState:UIControlStateNormal];
+    // 滑动状态下
+    [_currentTimeSlider setThumbImage:[LHToolsHelper getImageWithName:@"椭圆-7"] forState:UIControlStateHighlighted];
+    
+    [_currentTimeSlider setMinimumTrackTintColor:[UIColor colorWithHex:0xdddddd]];
+    [_bottomView addSubview:_currentTimeSlider];
+    
+    
+    //金山播放器 视频数据回调
+    __weak typeof(self) weakSelf = self;
+    self.player.videoDataBlock = ^(CMSampleBufferRef pixelBuffer) {
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            
+            weakSelf.currentTimeSlider.minimumValue = 0.0;//下限
+            weakSelf.currentTimeSlider.maximumValue = weakSelf.player.duration;//上限
+            if (!weakSelf.isDrag){
+                 weakSelf.currentTimeSlider.value = weakSelf.player.currentPlaybackTime;//开始默认值
+            }
+            
+            weakSelf.duration.text = [LHToolsHelper getMMSSFromSS:[NSString stringWithFormat:@"%f",weakSelf.player.duration]];
+            weakSelf.currentPlaybackTime.text = [LHToolsHelper getMMSSFromSS:[NSString stringWithFormat:@"%f",weakSelf.player.currentPlaybackTime]];
+        });
+    };
+
+}
+
+- (void)initInfoView{
+    _infoView = [[UIView alloc] initWithFrame:CGRectMake(0, self.frame.size.height - 25, self.frame.size.width, 25)];
+    _infoView.backgroundColor = [UIColor blackColor];
+    [self addSubview:_infoView];
+    
+    if (self.tempModel.isshowtitle){//是否展示标题
+        _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 0, self.frame.size.width - 120, 25)];
+        _titleLabel.font = [UIFont systemFontOfSize:13];
+        _titleLabel.textColor = [UIColor whiteColor];
+        _titleLabel.text = self.infoModel.name ?: @"";
+        _titleLabel.textAlignment = NSTextAlignmentCenter;
+        [_infoView addSubview:_titleLabel];
+    }
+  
+    if (self.tempModel.isshowcount){//是否展示观看人数
+        _seeNumBtn = [[UIButton alloc] initWithFrame:CGRectMake(self.frame.size.width - 60, 0, 58, 25)];
+        [_seeNumBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        [_seeNumBtn setImage:[LHToolsHelper getImageWithName:@"lh_header_11"] forState:UIControlStateNormal];
+        _seeNumBtn.titleLabel.font = [UIFont systemFontOfSize:13];
+        [_seeNumBtn setTitle:[NSString stringWithFormat:@"%d", self.infoModel.count] forState:UIControlStateNormal];
+        _seeNumBtn.userInteractionEnabled = NO;
+        [_seeNumBtn setImageEdgeInsets:UIEdgeInsetsMake(0, 0, 0, 4)];
+        _seeNumBtn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
+        [_infoView addSubview:_seeNumBtn];
+    }
+}
+
+#pragma mark _____slide滑动状态监听
+-(void)sliderValueChanged:(UISlider *)paramSender
+{
+    self.currentPlaybackTime.text = [LHToolsHelper getMMSSFromSS:[NSString stringWithFormat:@"%f",paramSender.value]];
+    self.isDrag = NO;
+    [self.player seekTo:paramSender.value accurate:YES];
+}
+
+- (void)sliderDragExit:(UISlider *)slider{
+    self.isDrag = YES;
+}
+
+/**开始播放*/
+- (void)startPlay{
+    [self.player prepareToPlay];
+    [self.player play];
+}
+/**
+ 暂停播放
+ */
+- (void)pausePlay {
+    [self.player pause];
+    self.isPause = YES;
+}
+/**
+ 结束当前视频的播放。
+ */
+- (void)destroyPlay {
+    [self.player stop];
+}
+
+
+#pragma mark 底部视频播放／暂停状态
+-(void)bottomStartBtnAction{
+    _topImageView.hidden = YES;
+    _playBtn.hidden = YES;
+    if (_startBtn.selected){
+        [self pausePlay];
+        self.playBtn.hidden = NO;
+    }else {
+        if (self.isPause){
+            [self startPlay];
+        }else {
+            [self.player reload: [NSURL URLWithString:self.mediaUrl] flush:NO];
+        }
+    }
+    _startBtn.selected = !_startBtn.selected;
+}
+
+#pragma mark _____切换屏幕方向
+-(void)switchScreenDirection:(UIButton *)sender{
+    sender.selected = !sender.selected;
+    if ([self.delegate respondsToSelector:@selector(switchScreenDirection:)]){
+        [self.delegate switchScreenDirection:sender];
+    }
+}
+
+//转换屏幕为横屏
+- (void)changeScreenHorizonal:(BOOL )isHorizonal andFrame:(CGRect)frame{
+    if (isHorizonal){
+        if (self.isVerticalVideo){//竖屏视频
+            self.frame = frame;
+            [self setViewFrameWithIsHorizonal:isHorizonal];
+            return;
+        }
+        //隐藏
+        [UIApplication sharedApplication].statusBarHidden = YES;
+        CGAffineTransform transform= CGAffineTransformMakeRotation(M_PI*0.5);
+        self.transform = transform;
+        self.frame = frame;
+        [self setViewFrameWithIsHorizonal:isHorizonal];
+    }else {
+        //显示
+        [UIApplication sharedApplication].statusBarHidden = NO;
+        CGAffineTransform transform= CGAffineTransformMakeRotation(0);
+        self.transform = transform;
+        self.frame = frame;
+        [self setViewFrameWithIsHorizonal:isHorizonal];
+    }
+}
+
+#pragma mark - 点击手势隐藏和显示底部视频编辑view
+-(void)handleSingleTap
+{
+    if (_bottomView.hidden){//隐藏的话则显示
+        _bottomView.hidden = NO;
+        _bottomView.alpha = 0;
+        [UIView animateWithDuration:0.5 animations:^{
+            _bottomView.alpha = 1;
+        }];
+    }else {
+        [UIView animateWithDuration:0.5 animations:^{
+            _bottomView.alpha = 0;
+        }completion:^(BOOL finished) {
+            _bottomView.hidden = YES;
+        }];
+    }
+}
+
+#pragma mark - 中心视频按钮点击播放
+-(void)centerPlayBtn
+{
+    _playBtn.hidden = YES;
+    _topImageView.hidden = YES;
+    _startBtn.selected = YES;
+    _bottomView.hidden = NO;
+    //状态判断是否第一次播放   YES:代表首次播放  NO:代表视频至少播放结束过一次 重启拉流
+    if (self.isPause){
+        [self startPlay];
+    }else{
+        [self.player reload:[NSURL URLWithString:self.mediaUrl] flush:NO];
+    }
+}
+
+#pragma mark - 视频播放结束通知
+- (void)playbackDidFinish
+{
+     _playBtn.hidden = NO;
+     _isPause = NO;
+     _topImageView.hidden = NO;
+     _startBtn.selected = NO;
+     _currentTimeSlider.value = 0;
+     _currentPlaybackTime.text = @"00:00:00";
+     _bottomView.hidden = NO;
+}
+
+//关闭
+- (void)closeBtnAction{
+    if ([self.delegate respondsToSelector:@selector(closeBtnAction)]){
+        [self.delegate closeBtnAction];
+    }
+}
+@end

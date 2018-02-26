@@ -1,0 +1,397 @@
+//
+//  LHMainViewController.m
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/1.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHMainViewController.h"
+#import "GolbalDefine.h"
+//view
+#import "LHOptionView.h"//选项卡view
+#import "LHMediaView.h"//播放器view
+#import "LHLogoView.h" //logo
+#import "LHNetRequest.h"
+#import "LHLiveInfoModel.h"
+#import "LHTemplateModel.h"
+#import "LHUserHelper.h"
+#import "LHBaseWebViewController.h"
+
+#import "LHVideoViewController.h"//视频
+#import "LHChatRoomVC.h"//聊天
+#import "LHHtmlViewController.h"//h5
+#import "LHDefaultViewController.h"//外链
+#import "LHShareViewController.h"//分享
+#import "LHVoteViewController.h"//投票
+//弹窗
+#import "LHPopupController.h"
+#import "LHSignPopView.h"
+#import "LHSecretViewController.h"
+
+#define JUMP_LIVE_URL1 @"http://livefamily.o2o.com.cn/LiveDiy/Index"
+#define JUMP_LIVE_URL2 @"http://livefamily.o2o.com.cn/LiveDiy/IndexPc"
+#define JUMP_LIVE_URL3 @"http://livefamily.o2o.com.cn/LiveDiy/Show"
+
+@interface LHMainViewController ()<LHMediaViewDelegate,LHVideoVCDelegate,LHDefaultVCDelegate,LHLogoViewDelegate>
+@property (nonatomic, strong) LHMediaView *mediaView;
+@property (nonatomic, strong) LHOptionView *optionView;
+@property (nonatomic, strong) LHLogoView *logoView;
+@property (nonatomic, strong) LHLiveInfoModel *liveInfoModel;//直播信息
+@property (nonatomic, strong) LHTemplateModel *templateModel;//模版信息
+@property (nonatomic, assign) LHPlayVideoType videoType;//种类
+@property (nonatomic, strong) NSString *playId; //初始化时的ID
+@property (nonatomic, assign) CGFloat mediaViewHeight; //根据宽高比算出视频高度
+@property (nonatomic, assign, getter = isHorizontal) BOOL horizontal; //是否横屏
+@property (nonatomic, assign) BOOL isPlaying; //是否正在播放
+@property (nonatomic, strong) NSString *jumpUrl1, *jumpUrl2, *jumpUrl3;
+
+@property (nonatomic, strong) LHPopupController *popController;
+@property (nonatomic, strong) LHSignPopView *signPopView;//签到
+@end
+
+@implementation LHMainViewController
+/**
+ 初始化视频信息
+ 
+ @param type 播放视频种类
+ @param playId 寻见获取到的playId
+ */
+- (instancetype)initWithPlayVideoType:(LHPlayVideoType)type playId:(NSString *)playId{
+    if (self = [super init]){
+        self.videoType = type;
+        self.playId = playId;
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    //注册通知
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(noticeShare) name:Notification_Share object:nil];
+    
+    [self initNavigationBar];
+    [self initView];
+    [self requestData];
+}
+- (void)viewWillAppear:(BOOL)animated{
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+    if (self.isPlaying){
+        [self.mediaView startPlay];
+    }
+}
+
+- (void)viewWillDisappear:(BOOL)animated{
+    [super viewWillDisappear:animated];
+    [self.navigationController setNavigationBarHidden:NO animated:animated];
+    if (self.mediaView.isPlaying){//是否正在播放
+        self.isPlaying = YES;
+        [self.mediaView pausePlay];
+    }else {
+        self.isPlaying = NO;
+    }
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+}
+
+- (void)initNavigationBar{
+    self.navigationController.navigationBar.tintColor = [UIColor themeColor];
+}
+
+#pragma mark - 懒加载
+//签到
+- (LHSignPopView *)signPopView{
+    if (!_signPopView){
+        CGRect viewInfoFrame =  (self.liveInfoModel.needshowinfo) ? CGRectMake(0, 0, 225, 205) : CGRectMake(0, 0, 225, 75);
+        _signPopView = [[LHSignPopView alloc] initWithFrame:viewInfoFrame needShowInfo:self.liveInfoModel.needshowinfo];
+        __weak typeof (self) weakSelf = self;
+        _signPopView.block = ^{
+            [weakSelf.popController dismissPopupControllerAnimated:YES];
+        };
+    }
+    return _signPopView;
+}
+
+
+- (void)initView{
+    self.view.backgroundColor = [UIColor whiteColor];
+    self.navigationItem.title = @"";
+    [self initMediaViewWithModel:nil andTemplateModel:nil];
+}
+
+#pragma mark 初始化选项卡
+- (void)initOptionViewWithTemModel:(LHTemplateModel *)model{
+    if (!model) return;
+    NSMutableArray *viewArray = [NSMutableArray array];
+    NSMutableArray *titleArray = [NSMutableArray array];
+    CGRect viewFrame = CGRectMake(0, 0, LH_ScreenWidth, LH_ScreenHeight - self.mediaViewHeight - 40);
+    for(LHTemplateTabModel *tabModel in model.tabs){
+        switch (tabModel.type) {
+            case 0://聊天
+            {
+                LHChatRoomVC *chatRoomVC = [[LHChatRoomVC alloc] initWithFrame:viewFrame infoModel:self.liveInfoModel tabModel:tabModel];
+                [viewArray addObject:chatRoomVC];
+            }
+                break;
+            case 1://h5
+            {
+                LHHtmlViewController *htmlVC = [[LHHtmlViewController alloc] initWithFrame:viewFrame htmlStr:tabModel.html];
+                [viewArray addObject:htmlVC];
+            }
+                break;
+            case 2://视频
+            {
+               LHVideoViewController *videoVC = [[LHVideoViewController alloc] initWithFrame:viewFrame infoId:self.liveInfoModel.userid];
+                videoVC.delegate = self;
+                [viewArray addObject:videoVC];
+            }
+                break;
+            case 3://商城
+            {
+                LHDefaultViewController *defaultVC = [[LHDefaultViewController alloc] initWithFrame:viewFrame model:tabModel];
+                defaultVC.delegate = self;
+                [viewArray addObject:defaultVC];
+            }
+                break;
+            case 4://投票
+            {
+                LHVoteViewController *voteVC = [[LHVoteViewController alloc] initWithFrame:viewFrame type:(tabModel.votelisttype == 0) ? LHVoteViewCellTypeSingle : LHVoteViewCellTypeDouble voteId:tabModel.voteid];
+                [viewArray addObject:voteVC];
+                
+            }
+                break;
+            case 5://分享次数列表
+            {
+                LHShareViewController *shareVC = [[LHShareViewController alloc] initWithFrame:viewFrame tabModel:tabModel pid:self.liveInfoModel.pid isLive:(self.videoType == LHPlayVideoTypeLive) ? YES : NO];
+                [viewArray addObject:shareVC];
+            }
+                break;
+            default:
+            {
+                LHDefaultViewController *defaultVC = [[LHDefaultViewController alloc] initWithFrame:viewFrame model:tabModel];
+                defaultVC.delegate = self;
+                [viewArray addObject:defaultVC];
+            }
+                break;
+        }
+        
+        [titleArray addObject:tabModel.title ?: @"未知"];
+    }
+    if (_optionView) {//如果存在则移除
+        [_optionView removeFromSuperview];
+    }
+    _optionView = [[LHOptionView alloc] initWithFrame:CGRectMake(0, self.mediaViewHeight, LH_ScreenWidth, LH_ScreenHeight - self.mediaViewHeight) parentVC:self titleArray:titleArray viewArray:viewArray showLogoView:self.templateModel.isshowlogo];
+    [self.view addSubview:_optionView];
+    
+    if (_logoView){//如果存在则移除
+        [_logoView removeFromSuperview];
+    }
+    if (self.templateModel.isshowlogo){//是否展示logo
+        _logoView = [[LHLogoView alloc] initWithFrame:CGRectMake(0, self.mediaViewHeight - 25, 75, 65) andModel:self.templateModel];
+        _logoView.delegate = self;
+        [self.view addSubview:_logoView];
+    }
+}
+
+#pragma mark 初始化顶部播放器
+- (void)initMediaViewWithModel:(LHLiveInfoModel *)model andTemplateModel:(LHTemplateModel *)tempModel{
+    if (_mediaView){
+        [_mediaView destroyPlay];
+        [_mediaView removeFromSuperview];
+    }
+    if (tempModel.videoscale == 0){//16:9
+        self.mediaViewHeight = LH_ScreenWidth/16.0*9 + 25;//显示标题的高度为25
+    }else {//4:3
+        self.mediaViewHeight = LH_ScreenWidth/4.0*3.0 + 25;
+    }
+    _mediaView = [[LHMediaView alloc] initWithFrame:CGRectMake(0, 0, LH_ScreenWidth, self.mediaViewHeight) model:model tempModel:tempModel isLive:(self.videoType == LHPlayVideoTypeLive) ? YES : NO];
+    _mediaView.delegate = self;
+    [self.view addSubview:_mediaView];
+    
+    if (self.logoView){
+        [self.view bringSubviewToFront:self.logoView];
+    }
+}
+
+#pragma mark - 历史视频代理
+- (void)clickVideoWithModel:(LHLiveInfoModel *)model{
+    //点击后更改为历史视频播放(刷新界面所有信息)
+    self.videoType = LHPlayVideoTypeVideo;
+    self.playId = model.pid;
+    [self requestData];
+}
+
+#pragma mark - LHMediaViewDelegate 播放器View代理
+- (void)switchScreenDirection:(UIButton *)sender
+{
+    //通过按钮selected判断屏幕方向，首次默认竖屏（未选中）
+    [self changeScreenHorizontal:sender.selected];
+}
+
+//关闭按钮方法
+- (void)closeBtnAction{
+    if (self.isHorizontal){
+        [self changeScreenHorizontal:NO];
+        return;
+    }
+    [self.mediaView destroyPlay];//销毁视频
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+#pragma mark - 商城界面代理
+- (void)enterToWebViewWithTitle:(NSString *)title url:(NSString *)url{
+    if ([self jumpToLiveVideoWithUrl:url]) return;
+    LHBaseWebViewController *webVC = [[LHBaseWebViewController alloc] initWithTitle:title url:url];
+    [self.navigationController pushViewController:webVC animated:YES];
+}
+#pragma mark - logo界面代理
+- (void)logoBtnClickWithUrl:(NSString *)url{
+    if ([self jumpToLiveVideoWithUrl:url]) return;
+    LHBaseWebViewController *webVC = [[LHBaseWebViewController alloc] initWithTitle:@"logo链接" url:url];
+    [self.navigationController pushViewController:webVC animated:YES];
+}
+
+//返回直播界面
+- (BOOL)jumpToLiveVideoWithUrl:(NSString *)url{
+    //这几个地址跳转到直播界面(不进入链接)
+    if ([url isEqualToString:self.jumpUrl1] || [url isEqualToString:self.jumpUrl2] || [url isEqualToString:self.jumpUrl3]){
+        self.playId = self.liveInfoModel.roomid;
+        self.videoType = LHPlayVideoTypeLive;
+        [self requestData];
+        return YES;
+    }
+    return NO;
+}
+//是否横屏
+- (void)changeScreenHorizontal:(BOOL)isHorizontal
+{
+    self.horizontal = isHorizontal;
+    
+    _optionView.hidden = isHorizontal;
+    if (self.logoView) {
+        self.logoView.hidden = isHorizontal;
+    }
+    if (isHorizontal){
+        [self.mediaView changeScreenHorizonal:isHorizontal andFrame:CGRectMake(0, 0, LH_ScreenWidth, LH_ScreenHeight)];
+    }else {
+        [self.mediaView changeScreenHorizonal:isHorizontal andFrame:CGRectMake(0, 0, LH_ScreenWidth, self.mediaViewHeight)];
+    }
+}
+
+//分享通知
+- (void)noticeShare{
+    LHShareModel *model = [[LHShareModel alloc] init];
+    model.share_title = self.liveInfoModel.share_title;
+    model.share_url = self.liveInfoModel.share_url;
+    model.share_img = self.liveInfoModel.share_img;
+    model.share_dec = self.liveInfoModel.share_dec;
+    [self lhShareWithModel:model];
+}
+
+//分享事件
+- (void)lhShareWithModel:(LHShareModel *)model{
+    
+}
+
+#pragma mark - 数据请求
+//请求直播/视频信息
+- (void)requestData{
+    //保存分享统计需要的参数
+    [LHUserHelper setPlayId:self.playId];
+    [LHUserHelper setVideoType:self.videoType];
+    switch (self.videoType) {
+        case LHPlayVideoTypeLive://直播
+            [self requestLiveInfo];
+            break;
+        case LHPlayVideoTypeVideo://视频
+            [self requestVideoInfo];
+            break;
+        default:
+            break;
+    }
+}
+
+//请求直播信息
+- (void)requestLiveInfo{
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    [params setValue:self.playId forKey:@"id"];
+    [LHNetRequest postLiveInfoWithParams:params success:^(id response) {
+        if (response[@"data"]){
+            self.liveInfoModel = [[LHLiveInfoModel alloc] initWithDictionary:response[@"data"]];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self requestTemplateInfo];
+            });
+        }
+    } failure:^(NSError *error) {
+    }];
+}
+
+//请求视频接口
+- (void)requestVideoInfo{
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    [params setValue:self.playId forKey:@"id"];
+    [LHNetRequest postVideoInfoWithParams:params success:^(id response) {
+        if (response[@"data"]){
+            self.liveInfoModel = [[LHLiveInfoModel alloc] initWithDictionary:response[@"data"]];
+            NSString *roomNo = self.liveInfoModel.roomno;
+            if (roomNo.length > 0){
+                roomNo = [NSString stringWithFormat:@"/%@",roomNo];
+            }
+            self.jumpUrl1 = [JUMP_LIVE_URL1 stringByAppendingString:roomNo];
+            self.jumpUrl2 = [JUMP_LIVE_URL2 stringByAppendingString:roomNo];
+            self.jumpUrl3 = [JUMP_LIVE_URL3 stringByAppendingString:roomNo];
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self requestTemplateInfo];
+            });
+        }
+    } failure:^(NSError *error) {
+    }];
+}
+
+//请求模版信息
+- (void)requestTemplateInfo{
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    [params setValue:self.liveInfoModel.kTemplate forKey:@"id"];
+    [LHNetRequest postTemplateInfoWithParams:params success:^(id response) {
+        if (response[@"data"]){
+            self.templateModel = [[LHTemplateModel alloc] initWithDictionary:response[@"data"]];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                
+                if (self.liveInfoModel.haspwd){//是否要密码
+                    LHSecretViewController *vc = [[LHSecretViewController alloc] init];
+                    vc.roomId = self.liveInfoModel.roomid;
+                    vc.successBlock = ^{
+                        [self loadNormalView];
+                    };
+                    vc.cancelBlock = ^{
+                        [self.navigationController popViewControllerAnimated:YES];
+                    };
+                    [self.navigationController presentViewController:vc animated:YES completion:nil];
+                }else{
+                    [self loadNormalView];
+                }
+            
+            });
+        }
+    } failure:^(NSError *error) {
+        
+    }];
+}
+
+- (void)loadNormalView{
+    //初始化播放器
+    [self initMediaViewWithModel:self.liveInfoModel andTemplateModel:self.templateModel];
+    [self initOptionViewWithTemModel:self.templateModel];
+
+    if (self.liveInfoModel.sign){
+        self.popController = [[LHPopupController alloc] initWithContents:@[self.signPopView]];
+        self.signPopView.needUserInfo = self.liveInfoModel.needuserinfo;
+        self.signPopView.roomId = self.liveInfoModel.roomid;
+        [self.popController presentPopupControllerAnimated:YES];
+    }
+}
+@end

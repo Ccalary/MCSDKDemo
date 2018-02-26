@@ -1,0 +1,51 @@
+//
+//  LHDefautlView.m
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/8.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHDefautlView.h"
+#import "GolbalDefine.h"
+#import "UIView+LHExtension.h"
+@interface LHDefautlView()
+@property (nonatomic ,strong)LHTemplateTabModel *model;
+@end
+
+@implementation LHDefautlView
+- (instancetype)initWithFrame:(CGRect)frame andModel:(LHTemplateTabModel *)model{
+    if (self = [super initWithFrame:frame]){
+        self.model = model;
+        [self initView];
+    }
+    return self;
+}
+
+- (void)initView{
+    CGFloat viewWidth = self.frame.size.width;
+    CGFloat viewHeight = self.frame.size.height;
+    self.backgroundColor = [UIColor bgColorMain];
+    
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake((viewWidth - 80)/2.0, (viewHeight - 80)/2.0 - 50, 80, 80)];
+    imageView.image = [LHToolsHelper getImageWithName:@"lh_car_80"];
+    [self addSubview:imageView];
+    
+    UIButton *enterBtn = [[UIButton alloc] initWithFrame:CGRectMake((viewWidth - 100)/2.0, viewHeight/2.0, 100, 30)];
+    [enterBtn setTitle:@"点击进入" forState:UIControlStateNormal];
+    [enterBtn setTitleColor:[UIColor themeColor] forState:UIControlStateNormal];
+    enterBtn.titleLabel.font = [UIFont systemFontOfSize:15];
+    enterBtn.layer.cornerRadius = 15;
+    enterBtn.layer.borderColor = [UIColor themeColor].CGColor;
+    enterBtn.layer.borderWidth = 1;
+    [enterBtn addTarget:self action:@selector(enterBtnAction) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:enterBtn];
+    
+}
+
+- (void)enterBtnAction{
+    if ([self.delegate respondsToSelector:@selector(enterToWebViewWithTitle:url:)]){
+        [self.delegate enterToWebViewWithTitle:self.model.title url:self.model.url];
+    }
+}
+@end

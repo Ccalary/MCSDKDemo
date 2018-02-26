@@ -1,0 +1,65 @@
+//
+//  LHNoticeTableViewCell.m
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/6.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHNoticeTableViewCell.h"
+#import "GolbalDefine.h"
+@interface LHNoticeTableViewCell()
+@property (nonatomic, strong) UILabel *dateLabel, *titleLabel, *contentLabel;
+@property (nonatomic, strong) UIImageView *iconImageView;
+@property (nonatomic, strong) UIView *holdView;
+@end
+@implementation LHNoticeTableViewCell
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier{
+    if (self = [super initWithStyle:style reuseIdentifier:reuseIdentifier]){
+        self.backgroundColor = [UIColor bgColorMain];
+        [self initView];
+    }
+    return self;
+}
+
+- (void)setFrame:(CGRect)frame{
+    frame.size.width = LH_ScreenWidth;
+    [super setFrame:frame];
+}
+
+- (void)initView{
+    CGFloat cellWidth = self.frame.size.width;
+    _dateLabel = [[UILabel alloc] initWithFrame:CGRectMake((cellWidth - 90)/2.0, 15, 90, 20)];
+    _dateLabel.font = LH_Font_System(10);
+    _dateLabel.textColor = [UIColor whiteColor];
+    _dateLabel.textAlignment = NSTextAlignmentCenter;
+    _dateLabel.text = @"11月12日 18:30";
+    _dateLabel.layer.cornerRadius = 3.0;
+    _dateLabel.clipsToBounds = YES;
+    _dateLabel.backgroundColor = [UIColor colorWithHex:0xe3e7ed];
+    [self.contentView addSubview:_dateLabel];
+    
+    _iconImageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 46, 50, 50)];
+    _iconImageView.image = [LHToolsHelper getImageWithName:@"m_notice_50"];
+    [self.contentView addSubview:_iconImageView];
+    
+    _holdView = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetMaxX(_iconImageView.frame) + 9, CGRectGetMaxY(_dateLabel.frame) + 10, cellWidth - CGRectGetMaxX(_iconImageView.frame) - 20, 90)];
+    _holdView.backgroundColor = [UIColor whiteColor];
+    [self.contentView addSubview:_holdView];
+    
+    _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 6, 200, 18)];
+    _titleLabel.text = @"公告信息";
+    _titleLabel.font = LH_Font_System(17);
+    _titleLabel.textColor = [UIColor fontColorBlack];
+    [_holdView addSubview:_titleLabel];
+    
+    _contentLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, CGRectGetMaxY(_titleLabel.frame) + 5, self.frame.size.width - 100, 50)];
+    _contentLabel.textColor = [UIColor fontColorLightGray];
+    _contentLabel.font = LH_Font_System(15);
+    _contentLabel.numberOfLines = 0;
+    _contentLabel.text = @"2018.1.1系统维护升级，请知晓，2018.1.1系统维护升级，请知晓，2018.1.1系统维护升级，请知晓，2018.1.1系统维护升级，请知晓";
+    [_holdView addSubview:_contentLabel];
+}
+
+
+@end

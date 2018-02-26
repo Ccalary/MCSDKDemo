@@ -1,0 +1,69 @@
+//
+//  LHApi.h
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/9.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+
+//通知消息
+/**
+  发送聊天消息时未登录的通知监听，可监听本通知要求登录等操作
+ */
+static NSString *const LHNoticeVisitorLogin = @"LHNoticeVisitorLogin";
+
+/*!
+ LH核心类
+ 
+ @discussion 您需要通过sharedInstance方法，获取单例对象
+ */
+@interface LHApi : NSObject
+/*!
+ 获取单例
+ @return   LH核心类单例
+ @discussion 您可以通过此方法，获取LHApi的单例，访问对象中的属性和方法。
+ */
++ (LHApi *)sharedInstance;
+
+/*!
+ 初始化SDK
+ 
+ @param appId 从寻见获取到的AppID
+ 
+ @discussion 您在使用所有功能之前，您必须先调用此方法初始化SDK。
+ 在App整个生命周期中，您只需要执行一次初始化。
+ */
+- (void)initLHSDK:(NSString *)appId;
+
+/**
+ 实名登录(在您需要的地方调用下本方法实名登录SDK)
+ @param userId 用户id
+ @param name 用户名
+ @param portrait 头像地址
+ @param success 成功回调
+ @param failure 失败回调
+ */
+- (void)loginWithUserId:(NSString *)userId
+                   name:(NSString *)name
+               portrait:(NSString *)portrait
+                success:(void (^)(void))success
+                failure:(void(^)(void))failure;
+
+/**
+ 退出登录
+ */
+- (void)logout;
+
+/**
+ 分享成功后的统计接口，分享成功后调用即可
+ */
+- (void)upLoadShareSuccessInfo;
+
+/**
+ 匿名登录是否可以发送消息（全局设置，默认不可以发送消息）
+ */
+@property (nonatomic, assign) BOOL isVisitorCanSendMsg;
+
+@end

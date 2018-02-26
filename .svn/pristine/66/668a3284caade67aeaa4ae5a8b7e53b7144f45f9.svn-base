@@ -1,0 +1,60 @@
+//
+//  LHMediaPlayer.m
+//  LiveHomeSDK
+//
+//  Created by chh on 2017/12/1.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHMediaPlayer.h"
+#import <KSYMediaPlayer/KSYMediaPlayer.h>
+@interface LHMediaPlayer()
+@property (nonatomic, strong) NSString *currentMediaURL;
+@property (nonatomic, strong) KSYMoviePlayerController *player;
+
+@end
+
+@implementation LHMediaPlayer
+- (instancetype)initPlaying:(NSString *)mediaURL {
+    self = [super init];
+    if (self) {
+        self.currentMediaURL = mediaURL;
+        NSString *urlStr =[NSString stringWithFormat:@"%@", mediaURL];
+        NSURL *url = [NSURL URLWithString:urlStr];
+        self.player = [[KSYMoviePlayerController alloc] initWithContentURL:url];
+        self.player.scalingMode = MPMovieScalingModeAspectFit;
+        self.player.controlStyle = MPMovieControlStyleNone;
+        self.player.view.autoresizingMask = UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+    }
+    return self;
+}
+
+- (void)startPlaying {
+    [self.player prepareToPlay];
+    [self.player play];
+}
+
+- (void)pausePlaying {
+    [self.player pause];
+}
+
+- (void)resumePlaying {
+    [self.player play];
+}
+
+- (void)destroyPlaying {
+    [self.player stop];
+}
+
+- (UIView *)currentLiveView {
+    return self.player.view;
+}
+
+- (NSTimeInterval)duration{
+    return self.player.duration;
+}
+
+- (NSTimeInterval)playableDuration{
+    return self.player.playableDuration;
+}
+@end

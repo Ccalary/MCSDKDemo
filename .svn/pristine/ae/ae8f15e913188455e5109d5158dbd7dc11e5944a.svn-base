@@ -1,0 +1,27 @@
+//
+//  LHMediaPlayer.h
+//  LiveHomeSDK
+//
+//  Created by chh on 2017/12/1.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+@interface LHMediaPlayer : NSObject
+
+@property (nonatomic, readonly) UIView *currentLiveView;
+@property (nonatomic, readonly) NSTimeInterval duration;
+@property (nonatomic, readonly) NSTimeInterval playableDuration;
+
+- (instancetype)initPlaying:(NSString *)mediaURL;
+
+- (void)startPlaying;
+
+- (void)pausePlaying;
+
+- (void)resumePlaying;
+
+- (void)destroyPlaying;
+@end

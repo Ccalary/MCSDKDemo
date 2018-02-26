@@ -1,0 +1,17 @@
+//
+//  LHVideoListView.h
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/5.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import <UIKit/UIKit.h>
+#import "LHLiveInfoModel.h"
+
+@protocol LHVideoListViewDelegate<NSObject>
+- (void)clickVideoWithModel:(LHLiveInfoModel *)model;
+@end
+@interface LHVideoListView : UIView
+@property (nonatomic, weak) id<LHVideoListViewDelegate> delegate;
+@end

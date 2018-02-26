@@ -1,0 +1,56 @@
+//
+//  LHTemplateModel.h
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/7.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+#import "LHTemplateTabModel.h"
+/*
+ [Display(Name = "编号")]
+ public string id { get; set; }
+ [Display(Name = "模版标题")]
+ public string title { get; set; }
+ [Display(Name = "视频")]
+ [FiliterEnum(EnumType = typeof(AppEnum.VideoScale))]
+ public int videoscale { get; set; }
+ [Display(Name = "Logo")]
+ [UIHint(ShowTemplate.Image)]
+ public string Logo { get; set; }
+ [Display(Name = "Logo")]
+ public bool isshowlogo { get; set; }
+ [Display(Name = "Logo点击跳转地址")]
+ public string logourl { get; set; }
+ [Display(Name = "显示直播间标题")]
+ public bool isshowtitle { get; set; } = true;
+ [Display(Name = "显示在线人数或者播放次数")]
+ public bool isshowcount { get; set; } = true;
+ public List<M_TemplateTab> tabs { get; set; }
+
+ */
+@interface LHTemplateModel : NSObject
+/** 模版标题 */
+@property (nonatomic, copy) NSString *title;
+/** 视频 0-16:9 1-4:3*/
+@property (nonatomic, assign) int videoscale;
+/** 编号 */
+@property (nonatomic, copy) NSString *pid;
+/** Logo图片地址 */
+@property (nonatomic, copy) NSString *Logo;
+/** 是否展示logo */
+@property (nonatomic, assign) BOOL isshowlogo;
+/** Logo点击跳转地址 */
+@property (nonatomic, copy) NSString *logourl;
+/** 显示直播间标题 */
+@property (nonatomic, assign) BOOL isshowtitle;
+/** 显示在线人数或者播放次数 */
+@property (nonatomic, assign) BOOL isshowcount;
+/** logo形状 */
+@property (nonatomic, assign) int LogoShape;
+/** tabs */
+@property (nonatomic, strong) NSArray <LHTemplateTabModel *> *tabs;
+
+- (instancetype)initWithDictionary:(NSDictionary *)dic;
+@end

@@ -1,0 +1,159 @@
+//
+//  LHVideoViewController.m
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/21.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHVideoViewController.h"
+#import "GolbalDefine.h"
+#import "LHVideoCollectionViewCell.h"
+#import "LHNetRequest.h"
+#import "LHUserHelper.h"
+
+@interface LHVideoViewController ()<UICollectionViewDelegateFlowLayout,UICollectionViewDelegate, UICollectionViewDataSource>
+@property (nonatomic, strong) UICollectionView *mCollectionView;
+@property (nonatomic, strong) UIRefreshControl *refreshControl;//刷新
+@property (nonatomic, strong) NSMutableArray *dataArray;
+@property (nonatomic, assign) int page;
+@property (nonatomic, assign, getter=isLoading) BOOL loading; //加载中
+@property (nonatomic, assign) BOOL haveMore; //是否还有更多
+@property (nonatomic, assign) CGRect frame;
+@property (nonatomic, strong) NSString *infoId;//请求使用的id
+@end
+
+@implementation LHVideoViewController
+- (instancetype)initWithFrame:(CGRect)frame infoId:(NSString *)infoId{
+    if (self = [super init]){
+        self.frame = frame;
+        self.infoId = infoId;
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    _dataArray = [[NSMutableArray alloc] init];
+    _page = 1;//默认从1开始
+    [self initView];
+    [self requestData];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+}
+
+- (void)initView{
+    self.view.backgroundColor = [UIColor bgColorMain];
+    
+    CGFloat itemWidth = (LH_ScreenWidth - 15)/2.0;
+    CGFloat itemHeight = 205;
+    UICollectionViewFlowLayout * aLayOut = [[UICollectionViewFlowLayout alloc]init];
+    aLayOut.itemSize = CGSizeMake(itemWidth, itemHeight);
+    aLayOut.minimumLineSpacing = 0;
+    aLayOut.minimumInteritemSpacing = 4;
+    aLayOut.scrollDirection = UICollectionViewScrollDirectionVertical;
+    _mCollectionView = [[UICollectionView alloc]initWithFrame:CGRectMake(5, 0, LH_ScreenWidth - 10, self.frame.size.height) collectionViewLayout:aLayOut];
+    [_mCollectionView registerClass:[LHVideoCollectionViewCell class] forCellWithReuseIdentifier:@"CellIdentifier"];
+    _mCollectionView.delegate = self;
+    _mCollectionView.dataSource = self;
+    _mCollectionView.backgroundColor = [UIColor bgColorMain];
+    [self.view addSubview:_mCollectionView];
+    
+    //系统自带下拉刷新
+    _refreshControl = [[UIRefreshControl alloc] init];
+    _refreshControl.attributedTitle = [[NSAttributedString alloc] initWithString:@"松开刷新"];
+    [_refreshControl addTarget:self action:@selector(refreshAction) forControlEvents:UIControlEventValueChanged];
+    [self.mCollectionView addSubview:_refreshControl];
+}
+
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
+{
+    return 1;
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+{
+    return self.dataArray.count;
+}
+
+//cell的记载
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    LHVideoCollectionViewCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"CellIdentifier" forIndexPath:indexPath];
+    cell.model = self.dataArray[indexPath.row];
+    return cell;
+}
+
+//设置每个item的UIEdgeInsets
+- (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section
+{
+    return UIEdgeInsetsMake(0, 0, 0, 0);
+}
+
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    LHLiveInfoModel *model = self.dataArray[indexPath.row];
+    if ([self.delegate respondsToSelector:@selector(clickVideoWithModel:)]){
+        [self.delegate clickVideoWithModel:model];
+    }
+}
+
+//下拉开始刷新
+- (void)refreshAction{
+    if (self.loading) return;
+    self.loading = YES;
+    self.page = 1;
+    [self requestData];
+}
+//上拉加载更多
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView{
+    //正在加载中直接返回
+    if (self.isLoading) return;
+    CGFloat offsetY = scrollView.contentOffset.y;
+    // 当最后一个cell完全显示在眼前时，contentOffset的y值
+    CGFloat judgeOffsetY = scrollView.contentSize.height - scrollView.frame.size.height;
+    
+    if ((offsetY >= judgeOffsetY) && self.haveMore ) { // 最后一个cell完全进入视野范围内,并且还有数据
+        self.loading = YES;
+        self.page ++;
+        [self requestData];
+    }
+}
+
+//加载数据
+- (void)requestData{
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    [params setValue:@(self.page) forKey:@"page"];
+    [params setValue:@(10) forKey:@"size"];
+    [params setValue:self.infoId forKey:@"userId"];
+    [LHNetRequest postVideoListWithParams:params success:^(id response) {
+        self.loading = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [_refreshControl endRefreshing];
+        });
+        
+        if (response[@"data"]){
+            NSArray *array = [[response objectForKey:@"data"] objectForKey:@"rows"];
+            if (self.page == 1){
+                [self.dataArray removeAllObjects];
+            }
+            for (NSDictionary *dic in array){
+                LHLiveInfoModel *model = [[LHLiveInfoModel alloc] initWithDictionary:dic];
+                [self.dataArray addObject:model];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.mCollectionView reloadData];
+            });
+            
+            //是否还有数据
+            self.haveMore = (array.count == 10) ? YES : NO;
+        }
+        
+    } failure:^(NSError *error) {
+        self.loading = NO;
+        [_refreshControl endRefreshing];
+    }];
+}
+@end

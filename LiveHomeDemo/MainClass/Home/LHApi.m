@@ -1,0 +1,129 @@
+//
+//  LHApi.m
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/9.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHApi.h"
+#import "LHUserHelper.h"
+#import "LHNetRequest.h"
+#import "RCDLive.h"
+#import "GolbalDefine.h"
+#import "RCDEntryRoomMessage.h"
+@interface LHApi()
+@property (nonatomic, strong) NSString *loginToken; //融云登录的token
+@end
+
+@implementation LHApi
++ (LHApi *)sharedInstance {
+    static LHApi * _sharedInstance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _sharedInstance = [[LHApi alloc] init];
+    });
+    return _sharedInstance;
+}
+
+/*!
+ 初始化SDK
+ @param appId 从寻见获取到的AppID
+ @discussion 您在使用所有功能之前，您必须先调用此方法初始化SDK。
+ 在App整个生命周期中，您只需要执行一次初始化。
+ */
+- (void)initLHSDK:(NSString *)appId{
+    [LHUserHelper setLiveHomeAppId:appId];
+    [self initRongCloud];
+    if ([LHUserHelper isRealLogin]) return; //实名登录过则不登录
+    [self loginWithVisitor];
+}
+
+/**
+ 实名登录
+ @param userId 用户id
+ @param name 用户名
+ @param portrait 头像地址
+ @param success 成功回调
+ @param failure 失败回调
+ */
+- (void)loginWithUserId:(NSString *)userId name:(NSString *)name portrait:(NSString *)portrait success:(void (^)(void))success failure:(void(^)(void))failure{
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    [params setValue:userId forKey:@"userid"];
+    [params setValue:name forKey:@"name"];
+    [params setValue:portrait forKey:@"portrait"];
+    [LHNetRequest postSDKLoginWithParams:params success:^(id response) {
+        //保存登录信息
+        [LHUserHelper setLogInfo:response[@"data"] withReal:1];
+        [LHUserHelper setUserName:name];
+        [self connectRongCloud];
+        NSLog(@"LHSDK实名登录成功");
+        success();
+    } failure:^(NSError *error) {
+        failure();
+    } ];
+}
+
+/**
+ 退出登录
+ */
+- (void)logout{
+    [LHUserHelper logout];
+    [self loginWithVisitor];
+}
+
+/**
+ * 匿名登录
+ */
+- (void)loginWithVisitor{
+    [LHNetRequest postAnonymousLoginWithParams:nil success:^(id response) {
+        NSLog(@"匿名登录成功");
+        //保存登录信息
+        [LHUserHelper setLogInfo:response[@"data"] withReal:0];
+        [self connectRongCloud];
+    } failure:^(NSError *error) {
+    }];
+}
+
+#pragma mark - 初始化融云
+- (void)initRongCloud{
+    [[RCDLive sharedRCDLive] initRongCloud:RongIMAppKey_Pro];
+    //注册自定义消息
+    [[RCDLive sharedRCDLive] registerRongCloudMessageType:[RCDEntryRoomMessage class]];
+}
+
+//连接融云
+- (void)connectRongCloud{
+    //如果融云当前登录的token和新的token相同，不需要重新登录
+    if ([self.loginToken isEqualToString:[LHUserHelper getRongCloudToken]]) return;
+    //如果已经登录过则有token，否则登录后要重新登录下
+    [[RCDLive sharedRCDLive] connectRongCloudWithToken:[LHUserHelper getRongCloudToken] success:^(NSString *userId) {
+        self.loginToken = [LHUserHelper getRongCloudToken];
+        NSLog(@"融云登录成功");
+    } error:^(RCConnectErrorCode status) {
+        NSLog(@"融云登录失败");
+    } tokenIncorrect:^{
+        NSLog(@"融云登录Token错误");
+    }];
+}
+#pragma mark - 分享统计
+- (void)upLoadShareSuccessInfo{
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    [params setValue:[LHUserHelper getPlayId] forKey:@"id"];
+    NSInteger type = [LHUserHelper getVideoType];
+    if (type == 0){//直播
+        [LHNetRequest postLiveShareZhuboWithParams:params success:^(id response) {
+            
+        } failure:^(NSError *error) {
+            
+        }];
+    }else {//视频
+        [LHNetRequest postVideoShareVideoWithParams:params success:^(id response) {
+            
+        } failure:^(NSError *error) {
+            
+        }];
+    }
+}
+@end
+

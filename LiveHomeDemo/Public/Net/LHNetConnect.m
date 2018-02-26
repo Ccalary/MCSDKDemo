@@ -1,0 +1,235 @@
+//
+//  LHNetConnect.m
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/12.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import "LHNetConnect.h"
+#import "NSDate+LHFormat.h"
+#import "NSString+LHExtend.h"
+#import "LHFunUtil.h"
+#import "LHUserHelper.h"
+#import "LHMessageHUD.h"
+
+@implementation LHNetConnect
++ (LHNetConnect *)sharedInstance {
+    static LHNetConnect * _sharedInstance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _sharedInstance = [[LHNetConnect alloc] init];
+    });
+    return _sharedInstance;
+}
+
+#pragma mark - 加解密
+/**
+ 获得参数的签名
+ @param dict 待签名的参数
+ @param date 时间
+ @return 签名
+ */
+- (NSString *)getParamsSignWithDictionary:(NSDictionary *)dict withTime:(NSDate *)date
+{
+    if(dict == nil || dict.allKeys.count == 0){
+        return @"";
+    }
+    NSMutableDictionary *params = [[NSMutableDictionary alloc]initWithDictionary:dict];
+    [params setObject:[date toDateTimeUTCFormat] forKey:@"_time"];
+    NSString *key = [NSString stringWithFormat:@"LiveHomeSDKSign=%@",[date toDateTimeUTCFormat]];
+    NSString * resultString = key;
+    NSMutableArray *stringArray = [NSMutableArray arrayWithArray:params.allKeys];
+    [stringArray sortUsingComparator: ^NSComparisonResult (NSString *str1, NSString *str2) {
+        NSString *n1 = [str1 lowercaseString];
+        NSString *n2 = [str2 lowercaseString];
+        return [n1 compare:n2];
+    }];
+    for(NSString * key in stringArray){
+        NSString *value = [params valueForKey:key];
+        
+        NSString *s = [NSString stringWithFormat:@"%@",value];
+        if([LHFunUtil isBlankString:s])
+        {
+            continue;
+        }
+        resultString = [resultString stringByAppendingString:[NSString stringWithFormat:@"&%@=%@",[key lowercaseString],[params valueForKey:key]]];
+    }
+    resultString = [resultString stringByAppendingString:[NSString stringWithFormat:@"&%@",key]];
+    return [resultString md5];
+}
+
+/**
+ 获取加密后的参数对
+ 
+ @param parameters 待加密的参数
+ @param now 时间
+ @return 加密后的参数对
+ */
+-(NSDictionary *)getEncryptParams:(NSDictionary *)parameters withTime:(NSDate *)now
+{
+    if(parameters == nil || parameters.allKeys.count == 0)
+    {
+        return nil;
+    }
+    //NSLog(@"时间戳: %@",[now toDateTimeUTCFormat]);
+    NSString *unencrypt = [NSString stringWithFormat:@"%@=%@+%@+%@",
+                           @"LiveHomeSDKUpload",
+                           @"ios",
+                           [@"ios" md5],
+                           [now toDateTimeUTCFormat]];
+    NSString *upkey = [unencrypt md5];
+    NSError *parseError = nil;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:parameters options:NSJSONWritingPrettyPrinted error:&parseError];
+    NSString * p = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    p = [p AES256EncryptWithKey:upkey];
+    return @{@"upload":p};
+}
+
+-(NSDictionary *)getSignParams:(NSDictionary *)parameters withTime:(NSDate *)now
+{
+    if(parameters == nil || parameters.allKeys.count == 0)
+    {
+        return nil;
+    }
+    NSMutableDictionary *params = [NSMutableDictionary dictionary];
+    NSString *sign = [self getParamsSignWithDictionary:parameters withTime:now];
+    [params setDictionary:parameters];
+    [params setValue:sign forKey:@"_sign"];
+    
+    NSDictionary *p = [params copy];
+    params = nil;
+    return p;
+}
+
+#pragma mark - get/post总控制
+- (NSMutableURLRequest *)mgrWithTime:(NSDate *)now{
+    NSMutableURLRequest *request = [[NSMutableURLRequest alloc] init];
+    request.cachePolicy = NSURLRequestUseProtocolCachePolicy;
+    request.timeoutInterval = 30;
+    //    [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
+    //设置请求类型
+    UIWebView* webView = [[UIWebView alloc] initWithFrame:CGRectZero];
+    NSString* secretAgent = [webView stringByEvaluatingJavaScriptFromString:@"navigator.userAgent"];
+    NSString *version = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"];
+    NSString *useragent = [NSString stringWithFormat:@"%@ livehomesdk/%@",secretAgent,version];
+    [request setValue:useragent forHTTPHeaderField:@"User-Agent"];
+    long time = [now toLong];
+    [request setValue:[NSString stringWithFormat:@"%ld",time] forHTTPHeaderField:@"lh-time"];
+    [request setValue:@"1" forHTTPHeaderField:@"lh-e"];
+    NSString *diviceID = [[UIDevice currentDevice].identifierForVendor UUIDString];
+    [request setValue:diviceID forHTTPHeaderField:@"lh-user-device"];
+    [request setValue:@"" forHTTPHeaderField:@"Cookie"];
+    [request setValue:[LHUserHelper getUserId] forHTTPHeaderField:@"lh-user-id"];
+    [request setValue:[LHUserHelper getMemberAuth] forHTTPHeaderField:@"lh-user-auth"];
+    [request setValue:[LHUserHelper getLiveHomeAppId] forHTTPHeaderField:@"lh-appid"];
+    [request setValue:@"v110" forHTTPHeaderField:@"lh-sdk"];
+    [request setValue:[[[NSBundle mainBundle]infoDictionary] objectForKey:@"CFBundleIdentifier"] forHTTPHeaderField:@"lh-appname"];
+    return request;
+}
+
+//请求成功后加密数据解密
+- (id)resolveResponseObjectWith:(NSURLSessionDataTask *)task responseObject:(id)responseObject{
+    if([responseObject isKindOfClass:[NSData class]])
+    {
+        NSString *str= [[NSMutableString alloc] initWithData:responseObject encoding:NSUTF8StringEncoding];
+        responseObject = str;
+    }
+    NSString *time;
+    BOOL encrypt = NO;
+    NSDate *date;
+    if ([task.response isKindOfClass:[NSHTTPURLResponse class]]) {
+        NSHTTPURLResponse *r = (NSHTTPURLResponse *)task.response;
+        time = [r allHeaderFields][@"lh-time"];
+        NSString *e = [r allHeaderFields][@"lh-e"];
+        if(e == nil || [LHFunUtil isNull:e] || [e isEqualToString: @"0"])
+        {
+            encrypt = NO;
+        }
+        else
+        {
+            encrypt = YES;
+        }
+    }
+    if(time)
+    {
+        date = [[NSDate alloc] initWithTimeIntervalSince1970:[time integerValue]/1000];
+    }
+    if(responseObject)
+    {
+        if(encrypt)
+        {
+            NSString *resultkey = [NSString stringWithFormat:@"%@=%@+%@+%@",@"WKFindReturn",@"ios",[@"ios" md5],[date toDateTimeUTCFormat]];
+            resultkey = [resultkey md5];//解密key
+            NSString *r = [responseObject AES256DecryptWithKey:resultkey];
+            responseObject = [r jsonDeserialize];
+        }
+        else
+        {
+            responseObject = [responseObject jsonDeserialize];
+        }
+    }
+    return responseObject;
+}
+
+//重新封装参数
+- (NSString *)parseParams:(NSDictionary *)params
+{
+    NSString *keyValueFormat;
+    NSMutableString *result = [NSMutableString new];
+    NSEnumerator *keyEnum = [params keyEnumerator];
+    id key;
+    while (key = [keyEnum nextObject]) {
+        //        NSLog(@"key = %@",key);
+        NSString* value = [params valueForKey:key];
+        value = [value stringByReplacingOccurrencesOfString:@"+" withString:@"%2b"];
+        keyValueFormat = [NSString stringWithFormat:@"%@=%@", key, value];
+        [result appendString:keyValueFormat];
+    }
+//        NSLog(@"result = %@",result);
+    
+    return result;
+}
+
+//POST请求
+- (void)postWithUrl:(NSString *)url
+         parameters:(id)parameters
+            success:(void (^)(id response))success
+            failure:(void (^)(NSError *error))failure
+{
+    
+    NSDate *now = [NSDate date];
+    NSDictionary *params = [self getSignParams:parameters withTime:now];
+    params = [self getEncryptParams:params withTime:now];
+    NSMutableURLRequest *request = [self mgrWithTime:now];
+    [request setURL:[NSURL URLWithString:url]];//请求地址
+    request.HTTPMethod = @"POST";
+    //把参数放到请求体内
+    NSString *postStr = [self parseParams:params];
+    [request setHTTPBody:[postStr dataUsingEncoding:NSUTF8StringEncoding]];
+    
+    NSURLSession *session = [NSURLSession sharedSession];
+    __block NSURLSessionDataTask *dataTask = nil;
+    dataTask = [session dataTaskWithRequest:request completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+        NSLog(@"\nurl:%@",url);
+        if (error) { //请求失败
+            failure(error);
+            NSLog(@"请求失败");
+        } else {  //请求成功
+            NSString *resultStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            id responseObj = [self resolveResponseObjectWith:dataTask responseObject:resultStr];
+            NSLog(@"\nresponse:%@", responseObj);
+            if ( [responseObj[@"code"] intValue] == 200){//成功的话返回
+                success(responseObj);
+            }else if ( [responseObj[@"code"] intValue] == 300) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSString *str = [NSString stringWithFormat:@"%@",responseObj[@"message"]];
+                    [LHMessageHUD showMessage:str];
+                });
+            }
+        }
+    }];
+    [dataTask resume];  //开始请求
+}
+
+@end

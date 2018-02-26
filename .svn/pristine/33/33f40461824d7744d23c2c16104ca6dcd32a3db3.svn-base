@@ -1,0 +1,18 @@
+//
+//  LHDefautlView.h
+//  LiveHomeDemo
+//
+//  Created by chh on 2017/12/8.
+//  Copyright © 2017年 chh. All rights reserved.
+//
+
+#import <UIKit/UIKit.h>
+#import "LHTemplateTabModel.h"
+@protocol LHDefaultViewDelegate<NSObject>
+- (void)enterToWebViewWithTitle:(NSString *)title url:(NSString *)url;
+@end
+@interface LHDefautlView : UIView
+@property (nonatomic, weak) id<LHDefaultViewDelegate> delegate;
+
+- (instancetype)initWithFrame:(CGRect)frame andModel:(LHTemplateTabModel *)model;
+@end
